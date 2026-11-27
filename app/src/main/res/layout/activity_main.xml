@@ -9,8 +9,10 @@
     2. HUD status strip: mono micro-readouts STATE / ENGINE / MODE,
        all driven by the real state machine in MainActivity.
     3. Settings panel (hidden until SETUP): backend URL + API key.
-    4. The Zyra stage as a Jarvis panel: hairline border that turns
-       cyan (listening/speaking) or amber (thinking), mono state label.
+    4. The Zyra stage, v0.3: her full figure in a circular window
+       with a Jarvis ring (cyan + glow listening/speaking, amber
+       thinking), mono state chip overlapping the bottom edge, and
+       an autonomous idle-life system (see IdleDirector in code).
     5. Chat list: assistant = plain text + mono ZYRA label, user =
        translucent blue bubble (see MainActivity.bubble()).
     6. Composer: #0c121a input, cyan SEND, TALK and HF HUD controls.
@@ -245,47 +247,63 @@
             android:textSize="11sp" />
     </LinearLayout>
 
-    <!-- 4 · Zyra stage panel. The frame background (panel fill + state
-         border/glow) is built in MainActivity.stageBackground(); the
-         motion loops animate this whole frame, as in v0.1. -->
+    <!-- 4 · Zyra stage, v0.3: the FULL figure of Zyra centered in a
+         CIRCULAR window (Brandon's ask), hero of the screen. The
+         circle's exact size is set in MainActivity (a CHANGE-ME
+         fraction of the screen width); the 260dp here is only a
+         placeholder. stageFrame is clipped to a circle in code
+         (clipToOutline + oval outline); stageInner holds the portrait
+         crossfade pair and is the surface the IdleDirector's
+         autonomous zoom / sway / ear-twitch animates, while the
+         conversation motion loops animate the whole circle.
+         stageBorder draws the Jarvis ring OVER the portrait: hairline
+         at rest, cyan + glow while listening/speaking, amber while
+         thinking (built in MainActivity.stageBorderDrawable()).
+         The "ZYRA // STATE" chip overlaps the circle's bottom edge. -->
     <FrameLayout
-        android:id="@+id/stageFrame"
+        android:id="@+id/stagePanel"
         android:layout_width="match_parent"
-        android:layout_height="264dp"
-        android:layout_marginStart="12dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginEnd="12dp"
-        android:background="@color/jarvis_panel">
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp">
 
-        <ImageView
-            android:id="@+id/stageImageA"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:contentDescription="Zyra"
-            android:scaleType="centerCrop" />
+        <FrameLayout
+            android:id="@+id/stageFrame"
+            android:layout_width="260dp"
+            android:layout_height="260dp"
+            android:layout_gravity="center_horizontal">
 
-        <ImageView
-            android:id="@+id/stageImageB"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:alpha="0"
-            android:contentDescription="Zyra"
-            android:scaleType="centerCrop" />
+            <FrameLayout
+                android:id="@+id/stageInner"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
 
-        <!-- State border drawn OVER the portraits (they fill the whole
-             frame, so a frame background border would hide behind
-             them). Its drawable is built in MainActivity.stageBorder()
-             and swapped on every state change. -->
-        <View
-            android:id="@+id/stageBorder"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+                <ImageView
+                    android:id="@+id/stageImageA"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="Zyra"
+                    android:scaleType="centerCrop" />
+
+                <ImageView
+                    android:id="@+id/stageImageB"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:alpha="0"
+                    android:contentDescription="Zyra"
+                    android:scaleType="centerCrop" />
+            </FrameLayout>
+
+            <View
+                android:id="@+id/stageBorder"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
 
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="bottom|start"
-            android:layout_margin="10dp"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="4dp"
             android:background="#B80A0A0B"
             android:gravity="center_vertical"
             android:orientation="horizontal"
