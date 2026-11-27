@@ -1,9 +1,12 @@
 package net.northbrand.zyrajarvis
 
 import android.Manifest
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.content.pm.PackageManager
+import android.graphics.Outline
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -15,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
 import android.widget.EditText
@@ -32,7 +36,9 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
+import java.util.Calendar
 import java.util.concurrent.Executors
+import kotlin.random.Random
 
 /**
  * Zyra — native Android client for the OpenJarvis backend on the NAS.
@@ -63,6 +69,12 @@ import java.util.concurrent.Executors
  * composer. The frontend's named fonts (Chakra Petch / IBM Plex Mono)
  * ship no font files, so HUD text uses Android monospace and the
  * wordmark bold sans with letter spacing.
+ *
+ * v0.3 (Brandon's asks): the stage is now her FULL figure inside a
+ * CIRCULAR window with the Jarvis ring around it, an IdleDirector
+ * keeps her alive on her own while the app sits idle (expression
+ * drift, zoom drift, sway, ear twitches, drowsy drift at night), and
+ * the app has a real launcher icon (her face in the cyan ring).
  */
 class MainActivity : Activity() {
 
@@ -90,8 +102,32 @@ class MainActivity : Activity() {
         const val NO_SPEECH_RESTART_MS = 15_000L // no speech yet: recycle the recorder
         const val MAX_LISTEN_MS = 30_000L       // hard cap on one utterance
 
-        // Idle this long and Zyra drifts to the sleepy portrait.
-        const val SLEEPY_AFTER_MS = 90_000L
+        // The circular stage's size, as a fraction of the screen
+        // width. CHANGE-ME: 0.66 makes her the hero of the screen
+        // without crowding the chat below.
+        const val STAGE_CIRCLE_FRACTION = 0.66f
+
+        // --- AUTONOMY (IdleDirector) tuning. CHANGE-ME freely: these
+        // set how alive she feels while the app sits idle. ---
+        // Delay between autonomous micro-behaviors (random in range).
+        const val DIRECTOR_TICK_MIN_MS = 4_000L
+        const val DIRECTOR_TICK_MAX_MS = 9_000L
+        // How long an autonomous expression (happy / playful) lingers
+        // before she drifts back to her resting portrait.
+        const val DIRECTOR_EXPR_MIN_MS = 2_500L
+        const val DIRECTOR_EXPR_MAX_MS = 4_000L
+        // No interaction for this long and she gets drowsy (the
+        // sleepy portrait + slower breathing). Also drowsy from
+        // DROWSY_FROM_HOUR (local time) onward, whatever the activity.
+        const val DROWSY_AFTER_MS = 180_000L // 3 minutes
+        const val DROWSY_FROM_HOUR = 23     // 23:00 local
+        // Slow zoom drift inside the circle: scale range and the
+        // one-way duration (there and back is twice this).
+        const val DIRECTOR_ZOOM_TO = 1.06f
+        const val DIRECTOR_ZOOM_MS = 3_000L
+        // Gentle sway inside the circle, degrees each way.
+        const val DIRECTOR_SWAY_DEG = 1.5f
+        const val DIRECTOR_SWAY_MS = 2_600L
 
         // Identity-bar health dot: GET /health (the one route that
         // needs no API key) on this cadence; 3 s timeouts so a dead
@@ -118,15 +154,18 @@ class MainActivity : Activity() {
      *                                 while its audio is being fetched
      *   PLAYFUL   zyra_playful.webp   flash when the stage is tapped, and
      *                                 when handsfree mode switches on
-     *   SLEEPY    zyra_sleepy.webp    after SLEEPY_AFTER_MS idle
+     *   SLEEPY    zyra_sleepy.webp    the IdleDirector's drowsy state
+     *                                 (long idle, or late at night)
      *
      * Portraits live in res/drawable-nodpi/zyra_<state>.webp (640x640,
-     * generated from Zyra's canonical likeness). To restyle her, replace
+     * FULL-FIGURE portraits generated from Zyra's canonical likeness,
+     * one outfit across all states: dark plum dress, cyan trim). They
+     * show inside the circular stage window. To restyle her, replace
      * those files; no code change needed.
      *
-     * [label] is the HUD readout on the stage ("ZYRA // LISTENING");
+     * [label] is the HUD readout on the stage chip ("ZYRA // LISTENING");
      * [hud] is the shorter word the top HUD strip shows after "STATE ·".
-     * The stage frame border also follows the state: cyan + glow for
+     * The ring around the circle also follows the state: cyan + glow for
      * LISTENING/SPEAKING, amber for THINKING, hairline otherwise
      * (see stageBorderDrawable()).
      */
@@ -149,6 +188,7 @@ class MainActivity : Activity() {
     private lateinit var hudState: TextView
     private lateinit var hudMode: TextView
     private lateinit var stageFrame: FrameLayout
+    private lateinit var stageInner: FrameLayout
     private lateinit var stageBorder: View
     private lateinit var stageImageA: ImageView
     private lateinit var stageImageB: ImageView
@@ -168,7 +208,15 @@ class MainActivity : Activity() {
     private var frontImage: ImageView? = null  // the currently visible stage ImageView
     private var backImage: ImageView? = null   // the hidden one, used for crossfades
     private var stageMotion: AnimatorSet? = null
-    private var sleepyRunnable: Runnable? = null
+
+    // --- IdleDirector state (autonomy; see the AUTONOMY section) ---
+    private var directorStarted = false
+    private var directorTick: Runnable? = null
+    private var directorInnerAnim: AnimatorSet? = null // zoom / sway / twitch on stageInner
+    private var directorExpr: Stage? = null           // expression she has drifted to, if any
+    private var directorExprBack: Runnable? = null    // returns her from that expression
+    private var lastInteractionAt = System.currentTimeMillis()
+    private var drowsy = false
 
     private var recorder: MediaRecorder? = null
     private var recordFile: File? = null
@@ -209,6 +257,7 @@ class MainActivity : Activity() {
         hudState = findViewById(R.id.hudState)
         hudMode = findViewById(R.id.hudMode)
         stageFrame = findViewById(R.id.stageFrame)
+        stageInner = findViewById(R.id.stageInner)
         stageBorder = findViewById(R.id.stageBorder)
         stageImageA = findViewById(R.id.stageImageA)
         stageImageB = findViewById(R.id.stageImageB)
@@ -244,6 +293,22 @@ class MainActivity : Activity() {
         refreshStatusLabel()
         startHealthPolling()
 
+        // The stage is a CIRCLE (v0.3): size it to a fraction of the
+        // screen width and clip the frame to an oval, so the full
+        // figure reads inside a round window. The ring overlay and
+        // the chip sit on top, unclipped.
+        val circlePx = (resources.displayMetrics.widthPixels * STAGE_CIRCLE_FRACTION).toInt()
+        stageFrame.layoutParams = stageFrame.layoutParams.apply {
+            width = circlePx
+            height = circlePx
+        }
+        stageFrame.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setOval(0, 0, view.width, view.height)
+            }
+        }
+        stageFrame.clipToOutline = true
+
         // Stage starts on the idle portrait; tapping her gets a playful flash.
         frontImage = stageImageA
         backImage = stageImageB
@@ -252,6 +317,8 @@ class MainActivity : Activity() {
             if (stage == Stage.IDLE || stage == Stage.SLEEPY) flashStage(Stage.PLAYFUL, 1500)
         }
         setStage(Stage.IDLE)
+        // ...and from here she lives on her own while idle (AUTONOMY).
+        startDirector()
 
         findViewById<Button>(R.id.sendButton).setOnClickListener {
             val text = messageInput.text.toString().trim()
@@ -265,6 +332,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        directorStarted = false
+        resetDirectorInner()
         stopRecorder()
         player?.release()
         net.shutdownNow()
@@ -367,17 +436,17 @@ class MainActivity : Activity() {
     )
 
     /**
-     * The stage's border overlay for a state, drawn over the portrait:
-     * LISTENING/SPEAKING get a cyan border wrapped in the accent glow
-     * (a translucent outer ring, the flat stand-in for the frontend's
-     * box-shadow glow); THINKING gets a plain amber border; the rest
-     * get the standard hairline.
+     * The Jarvis RING around the circular stage for a state, drawn
+     * over the portrait: LISTENING/SPEAKING get a cyan ring wrapped
+     * in the accent glow (a wide translucent band under a bright thin
+     * ring, the flat stand-in for the frontend's box-shadow glow);
+     * THINKING gets a plain amber ring; the rest get the hairline.
      */
     private fun stageBorderDrawable(forStage: Stage): Drawable {
         fun ring(strokeDp: Int, color: Int): GradientDrawable {
             val d = GradientDrawable()
+            d.shape = GradientDrawable.OVAL
             d.setColor(0x00000000) // transparent fill: portrait shows through
-            d.cornerRadius = dp(2).toFloat()
             d.setStroke(dp(strokeDp), color)
             return d
         }
@@ -385,41 +454,58 @@ class MainActivity : Activity() {
             Stage.LISTENING, Stage.SPEAKING -> {
                 val layers = LayerDrawable(
                     arrayOf(
-                        ring(3, getColor(R.color.jarvis_accent_glow)),
-                        ring(1, getColor(R.color.jarvis_accent))
+                        ring(8, getColor(R.color.jarvis_accent_glow)),
+                        ring(2, getColor(R.color.jarvis_accent))
                     )
                 )
                 layers.setLayerInset(1, dp(3), dp(3), dp(3), dp(3))
                 layers
             }
-            Stage.THINKING -> ring(1, getColor(R.color.jarvis_amber))
-            Stage.HAPPY -> ring(1, getColor(R.color.jarvis_success))
-            Stage.PLAYFUL -> ring(1, getColor(R.color.jarvis_purple))
+            Stage.THINKING -> ring(2, getColor(R.color.jarvis_amber))
+            Stage.HAPPY -> ring(2, getColor(R.color.jarvis_success))
+            Stage.PLAYFUL -> ring(2, getColor(R.color.jarvis_purple))
             Stage.IDLE, Stage.SLEEPY -> ring(1, getColor(R.color.jarvis_border))
         }
     }
 
-    private fun setStage(newStage: Stage) {
-        // Any state change cancels a pending drift off to sleep.
-        sleepyRunnable?.let { mainHandler.removeCallbacks(it) }
-        sleepyRunnable = null
+    /**
+     * Swap the portrait (and the ring + dot colors that dress it)
+     * WITHOUT touching the label, the HUD strip, or the motion loop.
+     * setStage builds on this; the IdleDirector also uses it directly
+     * for expression drift, so she can smile for a few seconds while
+     * the HUD honestly keeps reading IDLE.
+     */
+    private fun crossfadePortrait(to: Stage) {
+        if (to == stage) return
+        stage = to
+        val front = frontImage ?: return
+        val back = backImage ?: return
+        back.setImageResource(to.drawableRes)
+        back.animate().alpha(1f).setDuration(300).start()
+        front.animate().alpha(0f).setDuration(300).start()
+        frontImage = back
+        backImage = front
+        stageBorder.background = stageBorderDrawable(to)
+        stateDot.setTextColor(stageColor(to))
+    }
 
-        if (newStage != stage) {
-            stage = newStage
-            // Crossfade: load the new portrait into the hidden ImageView,
-            // fade the pair, then swap which one is "front".
-            val front = frontImage ?: return
-            val back = backImage ?: return
-            back.setImageResource(newStage.drawableRes)
-            back.animate().alpha(1f).setDuration(300).start()
-            front.animate().alpha(0f).setDuration(300).start()
-            frontImage = back
-            backImage = front
+    private fun setStage(newStage: Stage) {
+        // Conversation states always win over the autonomous layer:
+        // clear any director expression drift / inner motion first.
+        if (newStage == Stage.LISTENING || newStage == Stage.THINKING ||
+            newStage == Stage.SPEAKING
+        ) {
+            directorExprBack?.let { mainHandler.removeCallbacks(it) }
+            directorExprBack = null
+            directorExpr = null
+            resetDirectorInner()
         }
+
+        if (newStage != stage) crossfadePortrait(newStage)
         stateLabel.text = newStage.label
-        // The HUD dressing follows the same state change: frame border,
-        // the dot beside the stage label, and the top strip's STATE word.
-        stageBorder.background = stageBorderDrawable(newStage)
+        // The HUD dressing follows the same state change: the dot
+        // beside the stage label and the top strip's STATE word (the
+        // ring itself is swapped inside crossfadePortrait).
         stateDot.setTextColor(stageColor(newStage))
         hudState.text = "STATE · ${newStage.hud}"
         hudState.setTextColor(
@@ -430,11 +516,9 @@ class MainActivity : Activity() {
         )
         startMotion(newStage)
 
-        if (newStage == Stage.IDLE && !handsfreeOn) {
-            val r = Runnable { if (stage == Stage.IDLE && !handsfreeOn) setStage(Stage.SLEEPY) }
-            sleepyRunnable = r
-            mainHandler.postDelayed(r, SLEEPY_AFTER_MS)
-        }
+        // Back at rest: the director resumes shortly (its next tick
+        // would come anyway; this shortens the pause after a reply).
+        if (newStage == Stage.IDLE) kickDirector()
     }
 
     /** Show a brief expression, then fall back to idle (used for HAPPY/PLAYFUL). */
@@ -462,8 +546,10 @@ class MainActivity : Activity() {
 
         val set = AnimatorSet()
         when (forStage) {
-            Stage.IDLE, Stage.SLEEPY -> // breathing
+            Stage.IDLE -> // breathing
                 set.playTogether(loop("scaleX", 1f, 1.03f, 2400), loop("scaleY", 1f, 1.03f, 2400))
+            Stage.SLEEPY -> // breathing, slower: she is winding down
+                set.playTogether(loop("scaleX", 1f, 1.02f, 3600), loop("scaleY", 1f, 1.02f, 3600))
             Stage.LISTENING -> // attentive pulse
                 set.playTogether(loop("scaleX", 1f, 1.06f, 650), loop("scaleY", 1f, 1.06f, 650))
             Stage.THINKING -> // sway
@@ -482,6 +568,169 @@ class MainActivity : Activity() {
         }
         stageMotion = set
         set.start()
+    }
+
+    // ------------------------------------------------------------------
+    // AUTONOMY: the IdleDirector. While the app sits in IDLE (or
+    // SLEEPY) with no conversation running, Zyra lives on her own:
+    // every DIRECTOR_TICK_MIN_MS..MAX_MS she picks a micro-behavior
+    // with NO input from Brandon (his v0.3 ask):
+    //   - expression drift: crossfade to HAPPY or PLAYFUL for a few
+    //     seconds, then drift back (via crossfadePortrait only, so
+    //     the HUD keeps honestly reading IDLE);
+    //   - zoom drift: a slow push-in inside the circle, and back;
+    //   - sway: a slow gentle tilt inside the circle;
+    //   - ear twitch: one quick small bounce, the stand-in for her
+    //     cat ears (the portraits are stills, so the whole figure
+    //     pulses briefly).
+    // The breathing loop from startMotion runs underneath all of it.
+    // Zoom / sway / twitch animate stageInner ONLY, so they never
+    // fight the conversation motion loops (which animate the whole
+    // circle, stageFrame). Transform and opacity only, per the
+    // design rules. Conversation states override instantly: setStage
+    // clears the director's work the moment a real state arrives,
+    // and handsfree counts as conversation, not idle.
+    // Drowsiness: after DROWSY_AFTER_MS without interaction, or late
+    // at night (from DROWSY_FROM_HOUR, once he has been quiet for a
+    // minute), she drifts to SLEEPY with slower breathing; any touch
+    // (onUserInteraction) or conversation wakes her back up.
+    // ------------------------------------------------------------------
+
+    private fun startDirector() {
+        if (directorStarted) return
+        directorStarted = true
+        scheduleDirectorTick(Random.nextLong(DIRECTOR_TICK_MIN_MS, DIRECTOR_TICK_MAX_MS))
+    }
+
+    private fun scheduleDirectorTick(delayMs: Long) {
+        directorTick?.let { mainHandler.removeCallbacks(it) }
+        val tick = Runnable {
+            directorStep()
+            if (directorStarted) {
+                scheduleDirectorTick(Random.nextLong(DIRECTOR_TICK_MIN_MS, DIRECTOR_TICK_MAX_MS))
+            }
+        }
+        directorTick = tick
+        mainHandler.postDelayed(tick, delayMs)
+    }
+
+    /** Bring the next autonomous beat closer (used when a conversation ends). */
+    private fun kickDirector() {
+        if (directorStarted) scheduleDirectorTick(2_500L)
+    }
+
+    /** Any touch or key press counts as interaction: it wakes her. */
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        lastInteractionAt = System.currentTimeMillis()
+        if (drowsy) {
+            drowsy = false
+            if (stage == Stage.SLEEPY) setStage(Stage.IDLE)
+        }
+    }
+
+    private fun directorStep() {
+        if (!directorStarted || handsfreeOn) return
+        // A conversation (or a reply's expression flash) owns the stage.
+        if (directorExpr == null && stage != Stage.IDLE && stage != Stage.SLEEPY) return
+
+        // Drowsiness first: it decides which portrait is "home".
+        val idleFor = System.currentTimeMillis() - lastInteractionAt
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        // Late-night drowsiness still needs a quiet minute, so a tap
+        // at 23:30 wakes her and she stays awake while he is active.
+        val lateNight = hour >= DROWSY_FROM_HOUR && idleFor > 60_000L
+        drowsy = idleFor > DROWSY_AFTER_MS || lateNight
+        val home = if (drowsy) Stage.SLEEPY else Stage.IDLE
+        if (directorExpr == null && stage != home) { setStage(home); return }
+        if (drowsy) return // asleep: breathing only, no antics
+
+        // Mid expression-drift the drift-back runnable owns the
+        // return; mid zoom/sway the running animator does. Never stack.
+        if (directorExpr != null || directorInnerAnim != null) return
+
+        when (Random.nextInt(4)) {
+            0 -> directorDriftExpression()
+            1 -> directorInnerMotion(zoom = true)
+            2 -> directorInnerMotion(zoom = false)
+            else -> directorEarTwitch()
+        }
+    }
+
+    /** Crossfade to a happy/playful face for a few seconds, then back home. */
+    private fun directorDriftExpression() {
+        val expr = if (Random.nextBoolean()) Stage.HAPPY else Stage.PLAYFUL
+        directorExpr = expr
+        crossfadePortrait(expr)
+        val back = Runnable {
+            directorExprBack = null
+            val was = directorExpr
+            directorExpr = null
+            // Only fade back if nothing else took the stage meanwhile.
+            if (was != null && stage == was && !handsfreeOn) {
+                crossfadePortrait(if (drowsy) Stage.SLEEPY else Stage.IDLE)
+            }
+        }
+        directorExprBack = back
+        mainHandler.postDelayed(back, Random.nextLong(DIRECTOR_EXPR_MIN_MS, DIRECTOR_EXPR_MAX_MS))
+    }
+
+    /** Zoom drift (slow push-in and back) or sway (slow tilt), on stageInner. */
+    private fun directorInnerMotion(zoom: Boolean) {
+        fun innerLoop(prop: String, from: Float, to: Float, durationMs: Long): ObjectAnimator =
+            ObjectAnimator.ofFloat(stageInner, prop, from, to).apply {
+                duration = durationMs
+                repeatCount = 1 // out and back
+                repeatMode = ObjectAnimator.REVERSE
+                interpolator = AccelerateDecelerateInterpolator()
+            }
+        val set = AnimatorSet()
+        if (zoom) {
+            set.playTogether(
+                innerLoop("scaleX", 1f, DIRECTOR_ZOOM_TO, DIRECTOR_ZOOM_MS),
+                innerLoop("scaleY", 1f, DIRECTOR_ZOOM_TO, DIRECTOR_ZOOM_MS)
+            )
+        } else {
+            set.playTogether(
+                innerLoop("rotation", -DIRECTOR_SWAY_DEG, DIRECTOR_SWAY_DEG, DIRECTOR_SWAY_MS)
+            )
+        }
+        trackDirectorInner(set)
+        set.start()
+    }
+
+    /** One quick small bounce: the ear-twitch stand-in (~300 ms total). */
+    private fun directorEarTwitch() {
+        val sx = ObjectAnimator.ofFloat(stageInner, "scaleX", 1f, 1.045f, 1f).apply { duration = 300 }
+        val sy = ObjectAnimator.ofFloat(stageInner, "scaleY", 1f, 1.045f, 1f).apply { duration = 300 }
+        val set = AnimatorSet()
+        set.playTogether(sx, sy)
+        trackDirectorInner(set)
+        set.start()
+    }
+
+    private fun trackDirectorInner(set: AnimatorSet) {
+        directorInnerAnim = set
+        set.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                if (directorInnerAnim === set) directorInnerAnim = null
+            }
+
+            override fun onAnimationCancel(animation: Animator) {
+                if (directorInnerAnim === set) directorInnerAnim = null
+            }
+        })
+    }
+
+    /** Stop the director's inner motion and put stageInner back at rest. */
+    private fun resetDirectorInner() {
+        directorInnerAnim?.cancel()
+        directorInnerAnim = null
+        if (::stageInner.isInitialized) {
+            stageInner.scaleX = 1f
+            stageInner.scaleY = 1f
+            stageInner.rotation = 0f
+        }
     }
 
     // ------------------------------------------------------------------
