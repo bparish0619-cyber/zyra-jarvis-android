@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Identity bar background: the frontend's glassy sidebar color,
+     rgba(12,12,14,0.72), as a flat fill over the app background. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/jarvis_glass" />
+</shape>
