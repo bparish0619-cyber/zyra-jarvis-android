@@ -4,8 +4,10 @@ import android.Manifest
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.content.pm.PackageManager
-import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Bundle
@@ -28,6 +30,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.util.concurrent.Executors
 
@@ -51,6 +54,15 @@ import java.util.concurrent.Executors
  *
  * Networking is raw HttpURLConnection on a single background executor;
  * the UI thread only touches views. No third-party libraries.
+ *
+ * v0.2 presentation: the screen speaks the OpenJarvis web frontend's
+ * design language (frontend/src/index.css .dark tokens): near-black
+ * panels, hairline borders, cyan HUD accents, mono micro-labels. All
+ * colors live in res/values/colors.xml (the JARVIS THEME BLOCK); the
+ * layout is identity bar -> HUD strip -> stage panel -> chat ->
+ * composer. The frontend's named fonts (Chakra Petch / IBM Plex Mono)
+ * ship no font files, so HUD text uses Android monospace and the
+ * wordmark bold sans with letter spacing.
  */
 class MainActivity : Activity() {
 
@@ -81,6 +93,12 @@ class MainActivity : Activity() {
         // Idle this long and Zyra drifts to the sleepy portrait.
         const val SLEEPY_AFTER_MS = 90_000L
 
+        // Identity-bar health dot: GET /health (the one route that
+        // needs no API key) on this cadence; 3 s timeouts so a dead
+        // NAS turns the dot red quickly instead of hanging the poll.
+        const val HEALTH_POLL_MS = 15_000L
+        const val HEALTH_TIMEOUT_MS = 3_000
+
         const val REQ_RECORD_AUDIO = 42
     }
 
@@ -105,24 +123,37 @@ class MainActivity : Activity() {
      * Portraits live in res/drawable-nodpi/zyra_<state>.webp (640x640,
      * generated from Zyra's canonical likeness). To restyle her, replace
      * those files; no code change needed.
+     *
+     * [label] is the HUD readout on the stage ("ZYRA // LISTENING");
+     * [hud] is the shorter word the top HUD strip shows after "STATE ·".
+     * The stage frame border also follows the state: cyan + glow for
+     * LISTENING/SPEAKING, amber for THINKING, hairline otherwise
+     * (see stageBorderDrawable()).
      */
-    enum class Stage(val drawableRes: Int, val label: String) {
-        IDLE(R.drawable.zyra_idle, ""),
-        LISTENING(R.drawable.zyra_listening, "Listening…"),
-        THINKING(R.drawable.zyra_thinking, "Thinking…"),
-        SPEAKING(R.drawable.zyra_speaking, "Speaking…"),
-        HAPPY(R.drawable.zyra_happy, ""),
-        PLAYFUL(R.drawable.zyra_playful, ""),
-        SLEEPY(R.drawable.zyra_sleepy, "")
+    enum class Stage(val drawableRes: Int, val label: String, val hud: String) {
+        IDLE(R.drawable.zyra_idle, "ZYRA // IDLE", "IDLE"),
+        LISTENING(R.drawable.zyra_listening, "ZYRA // LISTENING", "LISTENING"),
+        THINKING(R.drawable.zyra_thinking, "ZYRA // THINKING", "THINKING"),
+        SPEAKING(R.drawable.zyra_speaking, "ZYRA // SPEAKING", "SPEAKING"),
+        HAPPY(R.drawable.zyra_happy, "ZYRA // IDLE", "REPLY"),
+        PLAYFUL(R.drawable.zyra_playful, "ZYRA // IDLE", "IDLE"),
+        SLEEPY(R.drawable.zyra_sleepy, "ZYRA // STANDBY", "STANDBY")
     }
 
     // --- Views (bound in onCreate) ---
     private lateinit var baseUrlInput: EditText
     private lateinit var apiKeyInput: EditText
+    private lateinit var settingsPanel: LinearLayout
+    private lateinit var statusDot: TextView
+    private lateinit var statusLine1: TextView
+    private lateinit var hudState: TextView
+    private lateinit var hudMode: TextView
     private lateinit var stageFrame: FrameLayout
+    private lateinit var stageBorder: View
     private lateinit var stageImageA: ImageView
     private lateinit var stageImageB: ImageView
     private lateinit var stateLabel: TextView
+    private lateinit var stateDot: TextView
     private lateinit var chatScroll: ScrollView
     private lateinit var chatContainer: LinearLayout
     private lateinit var messageInput: EditText
@@ -172,10 +203,17 @@ class MainActivity : Activity() {
 
         baseUrlInput = findViewById(R.id.baseUrlInput)
         apiKeyInput = findViewById(R.id.apiKeyInput)
+        settingsPanel = findViewById(R.id.settingsPanel)
+        statusDot = findViewById(R.id.statusDot)
+        statusLine1 = findViewById(R.id.statusLine1)
+        hudState = findViewById(R.id.hudState)
+        hudMode = findViewById(R.id.hudMode)
         stageFrame = findViewById(R.id.stageFrame)
+        stageBorder = findViewById(R.id.stageBorder)
         stageImageA = findViewById(R.id.stageImageA)
         stageImageB = findViewById(R.id.stageImageB)
         stateLabel = findViewById(R.id.stateLabel)
+        stateDot = findViewById(R.id.stateDot)
         chatScroll = findViewById(R.id.chatScroll)
         chatContainer = findViewById(R.id.chatContainer)
         messageInput = findViewById(R.id.messageInput)
@@ -192,7 +230,19 @@ class MainActivity : Activity() {
                 .putString(PREF_API_KEY, apiKeyInput.text.toString().trim())
                 .apply()
             Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+            // The identity bar names the backend; keep it honest, and
+            // re-probe the health dot against the new address at once.
+            refreshStatusLabel()
+            checkHealth()
         }
+
+        // SETUP in the identity bar folds the settings panel away.
+        findViewById<Button>(R.id.settingsButton).setOnClickListener {
+            settingsPanel.visibility =
+                if (settingsPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
+        refreshStatusLabel()
+        startHealthPolling()
 
         // Stage starts on the idle portrait; tapping her gets a playful flash.
         frontImage = stageImageA
@@ -235,9 +285,119 @@ class MainActivity : Activity() {
         (getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
             .getString(PREF_API_KEY, "") ?: "").trim()
 
+    /** dp to px, for the drawables and bubbles built in code. */
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+    // ------------------------------------------------------------------
+    // Identity bar: backend name + health dot
+    // ------------------------------------------------------------------
+
+    /**
+     * Line 1 of the status cluster: a short name for the backend in the
+     * saved base URL. The NAS gets its callsign ("NAS · 8000", like the
+     * brief); anything else shows host · port. CHANGE-ME: the NAS host
+     * string is Brandon's NAS LAN address.
+     */
+    private fun refreshStatusLabel() {
+        val url = baseUrl()
+        statusLine1.text = try {
+            val uri = URI(url)
+            val host = uri.host ?: url
+            val name = if (host == "192.168.1.60") "NAS" else host
+            val port = when {
+                uri.port > 0 -> uri.port
+                uri.scheme == "https" -> 443
+                else -> 80
+            }
+            "$name · $port".uppercase()
+        } catch (e: Exception) {
+            url
+        }
+    }
+
+    /** Poll /health forever on the main handler (cleared in onDestroy). */
+    private fun startHealthPolling() {
+        val poll = object : Runnable {
+            override fun run() {
+                checkHealth()
+                mainHandler.postDelayed(this, HEALTH_POLL_MS)
+            }
+        }
+        mainHandler.post(poll)
+    }
+
+    /**
+     * One health probe on a throwaway thread (never the chat executor:
+     * a 60 s chat read must not delay the dot). Green dot when /health
+     * answers 200, red when it does not; gray only until the first
+     * probe lands.
+     */
+    private fun checkHealth() {
+        val url = baseUrl()
+        Thread {
+            val ok = try {
+                val conn = URL("$url/health").openConnection() as HttpURLConnection
+                conn.connectTimeout = HEALTH_TIMEOUT_MS
+                conn.readTimeout = HEALTH_TIMEOUT_MS
+                conn.responseCode == 200
+            } catch (e: Exception) {
+                false
+            }
+            mainHandler.post {
+                statusDot.setTextColor(
+                    getColor(if (ok) R.color.jarvis_success else R.color.jarvis_error)
+                )
+            }
+        }.start()
+    }
+
     // ------------------------------------------------------------------
     // Stage: crossfade + per-state motion
     // ------------------------------------------------------------------
+
+    /** The Jarvis color a state speaks in (frame border, dots, HUD). */
+    private fun stageColor(forStage: Stage): Int = getColor(
+        when (forStage) {
+            Stage.LISTENING, Stage.SPEAKING -> R.color.jarvis_accent
+            Stage.THINKING -> R.color.jarvis_amber
+            Stage.HAPPY -> R.color.jarvis_success
+            Stage.PLAYFUL -> R.color.jarvis_purple
+            Stage.IDLE, Stage.SLEEPY -> R.color.jarvis_text_tertiary
+        }
+    )
+
+    /**
+     * The stage's border overlay for a state, drawn over the portrait:
+     * LISTENING/SPEAKING get a cyan border wrapped in the accent glow
+     * (a translucent outer ring, the flat stand-in for the frontend's
+     * box-shadow glow); THINKING gets a plain amber border; the rest
+     * get the standard hairline.
+     */
+    private fun stageBorderDrawable(forStage: Stage): Drawable {
+        fun ring(strokeDp: Int, color: Int): GradientDrawable {
+            val d = GradientDrawable()
+            d.setColor(0x00000000) // transparent fill: portrait shows through
+            d.cornerRadius = dp(2).toFloat()
+            d.setStroke(dp(strokeDp), color)
+            return d
+        }
+        return when (forStage) {
+            Stage.LISTENING, Stage.SPEAKING -> {
+                val layers = LayerDrawable(
+                    arrayOf(
+                        ring(3, getColor(R.color.jarvis_accent_glow)),
+                        ring(1, getColor(R.color.jarvis_accent))
+                    )
+                )
+                layers.setLayerInset(1, dp(3), dp(3), dp(3), dp(3))
+                layers
+            }
+            Stage.THINKING -> ring(1, getColor(R.color.jarvis_amber))
+            Stage.HAPPY -> ring(1, getColor(R.color.jarvis_success))
+            Stage.PLAYFUL -> ring(1, getColor(R.color.jarvis_purple))
+            Stage.IDLE, Stage.SLEEPY -> ring(1, getColor(R.color.jarvis_border))
+        }
+    }
 
     private fun setStage(newStage: Stage) {
         // Any state change cancels a pending drift off to sleep.
@@ -257,6 +417,17 @@ class MainActivity : Activity() {
             backImage = front
         }
         stateLabel.text = newStage.label
+        // The HUD dressing follows the same state change: frame border,
+        // the dot beside the stage label, and the top strip's STATE word.
+        stageBorder.background = stageBorderDrawable(newStage)
+        stateDot.setTextColor(stageColor(newStage))
+        hudState.text = "STATE · ${newStage.hud}"
+        hudState.setTextColor(
+            getColor(
+                if (newStage == Stage.IDLE || newStage == Stage.SLEEPY)
+                    R.color.jarvis_text_tertiary else R.color.jarvis_accent
+            )
+        )
         startMotion(newStage)
 
         if (newStage == Stage.IDLE && !handsfreeOn) {
@@ -314,41 +485,55 @@ class MainActivity : Activity() {
     }
 
     // ------------------------------------------------------------------
-    // Chat bubbles
+    // Chat messages, styled after the frontend's ChatPage: assistant
+    // replies are plain text blocks on the background under a mono
+    // "ZYRA" micro-label; the user's words sit in the translucent
+    // blue bubble (frontend --color-user-bubble), right-aligned.
+    // Errors read as SYSTEM blocks in the error color.
     // ------------------------------------------------------------------
 
     private fun bubble(text: String, who: String) {
-        val tv = TextView(this)
-        tv.text = text
-        tv.textSize = 15f
-        tv.setPadding(28, 18, 28, 18)
-        val bg = GradientDrawable()
-        bg.cornerRadius = 36f
-        val lp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.VERTICAL
+        row.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        lp.bottomMargin = 14
-        when (who) {
-            "user" -> {
-                bg.setColor(Color.parseColor("#C9A227")) // Northbrand gold
-                tv.setTextColor(Color.parseColor("#14161C"))
-                lp.gravity = Gravity.END
-            }
-            "error" -> {
-                bg.setColor(Color.parseColor("#1E222C"))
-                tv.setTextColor(Color.parseColor("#E08A8A"))
-                lp.gravity = Gravity.START
-            }
-            else -> { // assistant
-                bg.setColor(Color.parseColor("#1E222C"))
-                tv.setTextColor(Color.parseColor("#F2EFE6"))
-                lp.gravity = Gravity.START
-            }
+        ).apply { bottomMargin = dp(16) }
+
+        if (who == "user") {
+            val tv = TextView(this)
+            tv.text = text
+            tv.textSize = 15f
+            tv.setTextColor(getColor(R.color.jarvis_user_text))
+            tv.setPadding(dp(12), dp(9), dp(12), dp(9))
+            tv.setBackgroundResource(R.drawable.user_bubble)
+            tv.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.END }
+            row.addView(tv)
+        } else {
+            val isError = who == "error"
+            val label = TextView(this)
+            label.text = if (isError) "SYSTEM" else "ZYRA"
+            label.typeface = Typeface.MONOSPACE
+            label.textSize = 9f
+            label.letterSpacing = 0.14f
+            label.setTextColor(
+                getColor(if (isError) R.color.jarvis_error else R.color.jarvis_text_tertiary)
+            )
+            row.addView(label)
+
+            val tv = TextView(this)
+            tv.text = text
+            tv.textSize = 15f
+            tv.setTextColor(
+                getColor(if (isError) R.color.jarvis_error else R.color.jarvis_text)
+            )
+            tv.setPadding(0, dp(3), 0, 0)
+            row.addView(tv)
         }
-        tv.background = bg
-        tv.layoutParams = lp
-        chatContainer.addView(tv)
+        chatContainer.addView(row)
         chatScroll.post { chatScroll.fullScroll(View.FOCUS_DOWN) }
     }
 
@@ -558,7 +743,7 @@ class MainActivity : Activity() {
         ensureAudioPermission {
             if (startRecorder("ptt.m4a")) {
                 pttRecording = true
-                talkButton.text = "Stop"
+                talkButton.text = "STOP"
                 setStage(Stage.LISTENING)
             }
         }
@@ -566,7 +751,7 @@ class MainActivity : Activity() {
 
     private fun stopPtt() {
         pttRecording = false
-        talkButton.text = "Talk"
+        talkButton.text = "TALK"
         stopRecorder()
         val file = recordFile ?: return
         setStage(Stage.THINKING)
@@ -606,7 +791,19 @@ class MainActivity : Activity() {
 
     private fun setHandsfree(on: Boolean) {
         handsfreeOn = on
-        handsfreeButton.text = if (on) "Stop HF" else "Handsfree"
+        // HUD dressing for the mode: the HF control lights cyan while
+        // handsfree runs, and the top strip's MODE readout follows.
+        handsfreeButton.text = if (on) "HF ON" else "HF"
+        handsfreeButton.setBackgroundResource(
+            if (on) R.drawable.hud_button_active else R.drawable.hud_button
+        )
+        handsfreeButton.setTextColor(
+            getColor(if (on) R.color.jarvis_accent else R.color.jarvis_text)
+        )
+        hudMode.text = if (on) "MODE · HANDSFREE" else "MODE · PTT"
+        hudMode.setTextColor(
+            getColor(if (on) R.color.jarvis_accent else R.color.jarvis_text_tertiary)
+        )
         if (!on) {
             hfPoll?.let { mainHandler.removeCallbacks(it) }
             hfPoll = null
