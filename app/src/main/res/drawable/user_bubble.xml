@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- User chat bubble, the frontend's user-bubble token:
+     rgba(79,209,255,0.14) translucent blue, small 4dp corners.
+     Assistant messages get NO bubble (plain text on the background,
+     like ChatPage); see MainActivity.bubble(). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/jarvis_user_bubble" />
+    <corners android:radius="4dp" />
+</shape>
