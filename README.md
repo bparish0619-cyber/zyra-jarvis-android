@@ -11,11 +11,17 @@ running on Brandon's UGREEN NAS.
 - Typed chat, push-to-talk, and a truly handsfree two-way voice mode
   (listen, transcribe, chat, speak, listen again; half-duplex)
 - Replies are spoken aloud via the backend's TTS
+- v0.2 UI speaks the OpenJarvis web frontend's design language:
+  glass identity bar with a live backend health dot, mono HUD status
+  strip (STATE / ENGINE / MODE), the stage as a bordered panel whose
+  frame glows cyan while listening/speaking, ChatPage-style messages
+  (assistant = labeled plain text, user = translucent blue bubble).
+  All colors live in `res/values/colors.xml`, the JARVIS THEME BLOCK
 
 ## Backend
 
-Default base URL: `http://192.168.1.60:8000` (editable in the app's
-Settings row). Endpoints used:
+Default base URL: `http://192.168.1.60:8000` (editable in the SETUP
+panel behind the identity bar). Endpoints used:
 
 - `POST /v1/chat/completions` — OpenAI-shaped chat
 - `POST /v1/speech/transcribe` — multipart audio upload
