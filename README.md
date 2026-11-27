@@ -13,10 +13,15 @@ running on Brandon's UGREEN NAS.
 - Replies are spoken aloud via the backend's TTS
 - v0.2 UI speaks the OpenJarvis web frontend's design language:
   glass identity bar with a live backend health dot, mono HUD status
-  strip (STATE / ENGINE / MODE), the stage as a bordered panel whose
-  frame glows cyan while listening/speaking, ChatPage-style messages
+  strip (STATE / ENGINE / MODE), ChatPage-style messages
   (assistant = labeled plain text, user = translucent blue bubble).
   All colors live in `res/values/colors.xml`, the JARVIS THEME BLOCK
+- v0.3: the stage is Zyra's FULL figure in a circular window with the
+  Jarvis ring (cyan + glow listening/speaking, amber thinking); an
+  IdleDirector keeps her alive autonomously while idle (expression
+  drift, zoom drift, sway, ear twitches, drowsy drift after 3 minutes
+  or from 23:00); and there is a real launcher icon (her face in the
+  cyan ring, adaptive icon + density bitmaps)
 
 ## Backend
 
