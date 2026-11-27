@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ZyraJarvis main screen, top to bottom:
+    1. Settings: backend base URL + backend API key, one Save button.
+    2. The Zyra stage: two stacked ImageViews (crossfade pair) plus a
+       state label. The stage IS the app; the chat list supports it.
+    3. Chat list (ScrollView + LinearLayout, bubbles added in code).
+    4. Bottom row: message input, Send, Talk (push-to-talk), Handsfree.
+  The root gets system-bar insets as padding in MainActivity (targetSdk
+  35 draws edge-to-edge, so without that the settings row would slide
+  under the status bar).
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/zyra_background"
+    android:orientation="vertical">
+
+    <!-- Settings row 1: base URL -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp">
+
+        <EditText
+            android:id="@+id/baseUrlInput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Backend URL"
+            android:importantForAutofill="no"
+            android:inputType="textUri"
+            android:singleLine="true"
+            android:textColor="@color/zyra_text"
+            android:textColorHint="@color/zyra_text_dim" />
+    </LinearLayout>
+
+    <!-- Settings row 2: API key + Save (Save applies BOTH fields) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="8dp">
+
+        <EditText
+            android:id="@+id/apiKeyInput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Backend API key"
+            android:importantForAutofill="no"
+            android:inputType="textPassword"
+            android:singleLine="true"
+            android:textColor="@color/zyra_text"
+            android:textColorHint="@color/zyra_text_dim" />
+
+        <Button
+            android:id="@+id/saveSettingsButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Save" />
+    </LinearLayout>
+
+    <!-- Zyra stage: crossfade pair + state label -->
+    <FrameLayout
+        android:id="@+id/stageFrame"
+        android:layout_width="match_parent"
+        android:layout_height="280dp"
+        android:background="@color/zyra_background">
+
+        <ImageView
+            android:id="@+id/stageImageA"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="Zyra"
+            android:scaleType="centerCrop" />
+
+        <ImageView
+            android:id="@+id/stageImageB"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:alpha="0"
+            android:contentDescription="Zyra"
+            android:scaleType="centerCrop" />
+
+        <TextView
+            android:id="@+id/stateLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="8dp"
+            android:background="#8014161C"
+            android:paddingStart="10dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="3dp"
+            android:textColor="@color/zyra_gold"
+            android:textSize="13sp" />
+    </FrameLayout>
+
+    <!-- Chat list -->
+    <ScrollView
+        android:id="@+id/chatScroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:id="@+id/chatContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="8dp" />
+    </ScrollView>
+
+    <!-- Input row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp">
+
+        <EditText
+            android:id="@+id/messageInput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Message Zyra"
+            android:importantForAutofill="no"
+            android:inputType="text"
+            android:singleLine="true"
+            android:textColor="@color/zyra_text"
+            android:textColorHint="@color/zyra_text_dim" />
+
+        <Button
+            android:id="@+id/sendButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Send" />
+
+        <Button
+            android:id="@+id/talkButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Talk" />
+
+        <Button
+            android:id="@+id/handsfreeButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Handsfree" />
+    </LinearLayout>
+
+</LinearLayout>
