@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Northbrand palette. CHANGE-ME: gold is the house accent (#c9a227);
+  the background is a near-black blue-grey that matches the Zyra stage
+  artwork so the portraits blend into the screen.
+-->
+<resources>
+    <color name="zyra_background">#14161C</color>
+    <color name="zyra_surface">#1E222C</color>
+    <color name="zyra_gold">#C9A227</color>
+    <color name="zyra_text">#F2EFE6</color>
+    <color name="zyra_text_dim">#9AA0AE</color>
+    <color name="zyra_error">#E08A8A</color>
+</resources>
