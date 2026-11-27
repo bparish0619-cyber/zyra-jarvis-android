@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Plain dark Material theme, no action bar: the Zyra stage is the header. -->
+    <style name="Theme.ZyraJarvis" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/zyra_background</item>
+        <item name="android:statusBarColor">@color/zyra_background</item>
+        <item name="android:navigationBarColor">@color/zyra_background</item>
+        <item name="android:colorAccent">@color/zyra_gold</item>
+    </style>
+</resources>
