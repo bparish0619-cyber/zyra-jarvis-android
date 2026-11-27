@@ -21,8 +21,8 @@ android {
         applicationId = "net.northbrand.zyrajarvis"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2" // CHANGE-ME on each release; bump versionCode too
+        versionCode = 3
+        versionName = "0.3" // CHANGE-ME on each release; bump versionCode too
     }
 
     buildTypes {
