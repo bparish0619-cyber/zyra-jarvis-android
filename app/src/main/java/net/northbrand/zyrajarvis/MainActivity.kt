@@ -43,7 +43,7 @@ import java.util.concurrent.Executors
  *     alive in whatever state the conversation is in (see [Stage]).
  *
  * AUTH (important): the NAS server binds 0.0.0.0, and OpenJarvis refuses
- * a non-loopback bind without OPENJARVIS_API_KEY. Every /v1/* request
+ * a non-loopback bind without OPENJARVIS_API_KEY. Every /v1 request
  * therefore sends "Authorization: Bearer <key>" with the key from
  * Settings. CHANGE-ME: the key must match the OPENJARVIS_API_KEY value
  * in the NAS project's .env; it is typed into the app's Settings field,
@@ -364,7 +364,7 @@ class MainActivity : Activity() {
 
     // ------------------------------------------------------------------
     // Networking. All calls carry the Bearer key: the NAS bind is
-    // non-loopback, so OpenJarvis requires it on every /v1/* route
+    // non-loopback, so OpenJarvis requires it on every /v1 route
     // (only /health is open). Header is added here, in one place.
     // ------------------------------------------------------------------
 
