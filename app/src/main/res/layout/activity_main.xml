@@ -1,76 +1,261 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ZyraJarvis main screen, top to bottom:
-    1. Settings: backend base URL + backend API key, one Save button.
-    2. The Zyra stage: two stacked ImageViews (crossfade pair) plus a
-       state label. The stage IS the app; the chat list supports it.
-    3. Chat list (ScrollView + LinearLayout, bubbles added in code).
-    4. Bottom row: message input, Send, Talk (push-to-talk), Handsfree.
-  The root gets system-bar insets as padding in MainActivity (targetSdk
-  35 draws edge-to-edge, so without that the settings row would slide
-  under the status bar).
+  ZyraJarvis main screen, v0.2: restyled after the OpenJarvis web
+  frontend (frontend/src/index.css .dark tokens + ChatPage layout),
+  adapted to a phone. Top to bottom:
+    1. Identity bar: glass bar, ZYRA wordmark, live backend status
+       cluster (dot + "NAS · 8000" / "VOICE · ZOE"), SETUP toggle.
+       (The web UI's 260px sidebar compresses into this bar.)
+    2. HUD status strip: mono micro-readouts STATE / ENGINE / MODE,
+       all driven by the real state machine in MainActivity.
+    3. Settings panel (hidden until SETUP): backend URL + API key.
+    4. The Zyra stage as a Jarvis panel: hairline border that turns
+       cyan (listening/speaking) or amber (thinking), mono state label.
+    5. Chat list: assistant = plain text + mono ZYRA label, user =
+       translucent blue bubble (see MainActivity.bubble()).
+    6. Composer: #0c121a input, cyan SEND, TALK and HF HUD controls.
+  Fonts: the frontend names 'Chakra Petch' / 'IBM Plex Mono' but ships
+  no font files, so HUD text uses Android monospace and the wordmark
+  bold sans, letter-spaced to fake the display face.
+  The root gets system-bar insets as padding in MainActivity
+  (targetSdk 35 draws edge-to-edge).
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/zyra_background"
+    android:background="@color/jarvis_bg"
     android:orientation="vertical">
 
-    <!-- Settings row 1: base URL -->
+    <!-- 1 · Identity bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/glass_bar"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="10dp">
+
+        <View
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:background="@color/jarvis_accent" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="9dp"
+            android:fontFamily="sans-serif"
+            android:letterSpacing="0.22"
+            android:text="ZYRA"
+            android:textColor="@color/jarvis_text"
+            android:textSize="19sp"
+            android:textStyle="bold" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/statusDot"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text="●"
+            android:textColor="@color/jarvis_text_tertiary"
+            android:textSize="11sp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/statusLine1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:fontFamily="monospace"
+                android:letterSpacing="0.08"
+                android:text="NAS · 8000"
+                android:textColor="@color/jarvis_text_secondary"
+                android:textSize="10sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:fontFamily="monospace"
+                android:letterSpacing="0.08"
+                android:text="VOICE · ZOE"
+                android:textColor="@color/jarvis_text_tertiary"
+                android:textSize="9sp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/settingsButton"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/hud_button"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.08"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:stateListAnimator="@null"
+            android:text="SETUP"
+            android:textColor="@color/jarvis_text_secondary"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/jarvis_border" />
+
+    <!-- 2 · HUD status strip (values set from the state machine) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="8dp">
+        android:paddingStart="14dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:id="@+id/hudState"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.1"
+            android:text="STATE · IDLE"
+            android:textColor="@color/jarvis_accent"
+            android:textSize="10sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.1"
+            android:text="ENGINE · CLOUD"
+            android:textColor="@color/jarvis_text_tertiary"
+            android:textSize="10sp" />
+
+        <TextView
+            android:id="@+id/hudMode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.1"
+            android:text="MODE · PTT"
+            android:textColor="@color/jarvis_text_tertiary"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/jarvis_border_subtle" />
+
+    <!-- 3 · Settings panel (toggled by SETUP; Save applies both fields) -->
+    <LinearLayout
+        android:id="@+id/settingsPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/jarvis_panel"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.14"
+            android:text="BACKEND URL"
+            android:textColor="@color/jarvis_text_tertiary"
+            android:textSize="9sp" />
 
         <EditText
             android:id="@+id/baseUrlInput"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="Backend URL"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/hud_input"
+            android:hint="http://192.168.1.60:8000"
             android:importantForAutofill="no"
             android:inputType="textUri"
+            android:padding="10dp"
             android:singleLine="true"
-            android:textColor="@color/zyra_text"
-            android:textColorHint="@color/zyra_text_dim" />
-    </LinearLayout>
+            android:textColor="@color/jarvis_text"
+            android:textColorHint="@color/jarvis_text_tertiary"
+            android:textSize="13sp" />
 
-    <!-- Settings row 2: API key + Save (Save applies BOTH fields) -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="8dp">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.14"
+            android:text="BACKEND API KEY"
+            android:textColor="@color/jarvis_text_tertiary"
+            android:textSize="9sp" />
 
         <EditText
             android:id="@+id/apiKeyInput"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="Backend API key"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/hud_input"
+            android:hint="OPENJARVIS_API_KEY from the NAS .env"
             android:importantForAutofill="no"
             android:inputType="textPassword"
+            android:padding="10dp"
             android:singleLine="true"
-            android:textColor="@color/zyra_text"
-            android:textColorHint="@color/zyra_text_dim" />
+            android:textColor="@color/jarvis_text"
+            android:textColorHint="@color/jarvis_text_tertiary"
+            android:textSize="13sp" />
 
         <Button
             android:id="@+id/saveSettingsButton"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Save" />
+            android:layout_height="36dp"
+            android:layout_gravity="end"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/hud_button"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.08"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:stateListAnimator="@null"
+            android:text="SAVE"
+            android:textColor="@color/jarvis_accent"
+            android:textSize="11sp" />
     </LinearLayout>
 
-    <!-- Zyra stage: crossfade pair + state label -->
+    <!-- 4 · Zyra stage panel. The frame background (panel fill + state
+         border/glow) is built in MainActivity.stageBackground(); the
+         motion loops animate this whole frame, as in v0.1. -->
     <FrameLayout
         android:id="@+id/stageFrame"
         android:layout_width="match_parent"
-        android:layout_height="280dp"
-        android:background="@color/zyra_background">
+        android:layout_height="264dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="12dp"
+        android:background="@color/jarvis_panel">
 
         <ImageView
             android:id="@+id/stageImageA"
@@ -87,22 +272,51 @@
             android:contentDescription="Zyra"
             android:scaleType="centerCrop" />
 
-        <TextView
-            android:id="@+id/stateLabel"
+        <!-- State border drawn OVER the portraits (they fill the whole
+             frame, so a frame background border would hide behind
+             them). Its drawable is built in MainActivity.stageBorder()
+             and swapped on every state change. -->
+        <View
+            android:id="@+id/stageBorder"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="8dp"
-            android:background="#8014161C"
-            android:paddingStart="10dp"
-            android:paddingTop="3dp"
-            android:paddingEnd="10dp"
-            android:paddingBottom="3dp"
-            android:textColor="@color/zyra_gold"
-            android:textSize="13sp" />
+            android:layout_gravity="bottom|start"
+            android:layout_margin="10dp"
+            android:background="#B80A0A0B"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="4dp">
+
+            <TextView
+                android:id="@+id/stateDot"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:text="●"
+                android:textColor="@color/jarvis_text_tertiary"
+                android:textSize="9sp" />
+
+            <TextView
+                android:id="@+id/stateLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:fontFamily="monospace"
+                android:letterSpacing="0.12"
+                android:text="ZYRA // IDLE"
+                android:textColor="@color/jarvis_text"
+                android:textSize="11sp" />
+        </LinearLayout>
     </FrameLayout>
 
-    <!-- Chat list -->
+    <!-- 5 · Chat list -->
     <ScrollView
         android:id="@+id/chatScroll"
         android:layout_width="match_parent"
@@ -114,45 +328,92 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="8dp" />
+            android:paddingStart="14dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="10dp" />
     </ScrollView>
 
-    <!-- Input row -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/jarvis_border_subtle" />
+
+    <!-- 6 · Composer -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="8dp">
+        android:padding="10dp">
 
         <EditText
             android:id="@+id/messageInput"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="42dp"
             android:layout_weight="1"
+            android:background="@drawable/hud_input"
             android:hint="Message Zyra"
             android:importantForAutofill="no"
             android:inputType="text"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
             android:singleLine="true"
-            android:textColor="@color/zyra_text"
-            android:textColorHint="@color/zyra_text_dim" />
+            android:textColor="@color/jarvis_text"
+            android:textColorHint="@color/jarvis_text_tertiary"
+            android:textSize="14sp" />
 
         <Button
             android:id="@+id/sendButton"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Send" />
+            android:layout_height="42dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/send_button"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.06"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:stateListAnimator="@null"
+            android:text="SEND"
+            android:textColor="@color/jarvis_on_accent"
+            android:textSize="11sp"
+            android:textStyle="bold" />
 
         <Button
             android:id="@+id/talkButton"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Talk" />
+            android:layout_height="42dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/hud_button"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.06"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:stateListAnimator="@null"
+            android:text="TALK"
+            android:textColor="@color/jarvis_text"
+            android:textSize="11sp" />
 
         <Button
             android:id="@+id/handsfreeButton"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Handsfree" />
+            android:layout_height="42dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/hud_button"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.06"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:stateListAnimator="@null"
+            android:text="HF"
+            android:textColor="@color/jarvis_text"
+            android:textSize="11sp" />
     </LinearLayout>
 
 </LinearLayout>
