@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive launcher icon (API 26+): near-black Jarvis background with
+  Zyra's face inside the glowing cyan ring as the foreground layer
+  (artwork pre-padded to the safe zone in the density PNGs, so the
+  ring survives circle / squircle / rounded-square launcher masks).
+  Older devices fall back to the density ic_launcher.png bitmaps.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/jarvis_bg" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
