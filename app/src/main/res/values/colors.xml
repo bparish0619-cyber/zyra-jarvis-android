@@ -1,14 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Northbrand palette. CHANGE-ME: gold is the house accent (#c9a227);
-  the background is a near-black blue-grey that matches the Zyra stage
-  artwork so the portraits blend into the screen.
+  ============================================================
+  JARVIS THEME BLOCK — the single place to retune the whole UI.
+  CHANGE-ME: every color in the app comes from here (or from the
+  matching hex in MainActivity's stage-frame builder). Values are
+  the OpenJarvis web frontend's .dark tokens, copied 1:1 from
+  frontend/src/index.css so the app and the web UI match:
+    bg #0a0a0b · panel #121214 · raised #18181b
+    accent cyan #22d3ee · amber #f5a524 · purple #b794ff
+    success #3ddc97 · error #ff6b6b
+  Android colors are AARRGGBB; the CSS rgba() alphas are folded in:
+    border  rgba(255,255,255,0.09) -> #17FFFFFF
+    subtle  rgba(255,255,255,0.05) -> #0DFFFFFF
+    glass   rgba(12,12,14,0.72)    -> #B80C0C0E
+    glow    rgba(34,211,238,0.30)  -> #4D22D3EE
+    user    rgba(79,209,255,0.14)  -> #244FD1FF
+  ============================================================
 -->
 <resources>
-    <color name="zyra_background">#14161C</color>
-    <color name="zyra_surface">#1E222C</color>
-    <color name="zyra_gold">#C9A227</color>
-    <color name="zyra_text">#F2EFE6</color>
-    <color name="zyra_text_dim">#9AA0AE</color>
-    <color name="zyra_error">#E08A8A</color>
+    <color name="jarvis_bg">#0A0A0B</color>
+    <color name="jarvis_panel">#121214</color>
+    <color name="jarvis_raised">#18181B</color>
+    <color name="jarvis_glass">#B80C0C0E</color>
+    <color name="jarvis_border">#17FFFFFF</color>
+    <color name="jarvis_border_subtle">#0DFFFFFF</color>
+
+    <color name="jarvis_accent">#22D3EE</color>
+    <color name="jarvis_accent_hover">#67E8F9</color>
+    <color name="jarvis_accent_glow">#4D22D3EE</color>
+    <color name="jarvis_accent_subtle">#1A22D3EE</color>
+    <color name="jarvis_amber">#F5A524</color>
+    <color name="jarvis_purple">#B794FF</color>
+    <color name="jarvis_success">#3DDC97</color>
+    <color name="jarvis_error">#FF6B6B</color>
+
+    <color name="jarvis_text">#EDEDEF</color>
+    <color name="jarvis_text_secondary">#8D8D93</color>
+    <color name="jarvis_text_tertiary">#5C5C63</color>
+    <color name="jarvis_on_accent">#070B11</color>
+
+    <color name="jarvis_user_bubble">#244FD1FF</color>
+    <color name="jarvis_user_text">#E6F1FF</color>
+    <color name="jarvis_input_bg">#0C121A</color>
+    <color name="jarvis_input_border">#1F4FD1FF</color>
 </resources>
